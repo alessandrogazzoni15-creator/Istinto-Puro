@@ -6,29 +6,30 @@ export default async function handler(req, res) {
 
   if (!key) return res.status(500).json({ error: 'Chiave API mancante su Vercel' });
 
-  const prompt = `Trova calciatori che hanno giocato in queste squadre: ${teams.join(', ')}. Rispondi ESCLUSIVAMENTE con un JSON con questa struttura: {"collegamento_trovato": true, "calciatori": [{"nome": "...", "squadre_confermate": "...", "fonte_url": "..."}]}. Non aggiungere testo prima o dopo il JSON.`;
+  const prompt = `Trova calciatori che hanno giocato in: ${teams.join(', ')}. Rispondi SOLO JSON: {"collegamento_trovato": true, "calciatori": []}`;
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
-      })
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
 
     const data = await response.json();
-    
+
+    // SE GOOGLE DA ERRORE, LO VEDREMO QUI
     if (data.error) {
-      return res.status(500).json({ error: "Errore Google: " + data.error.message });
+      return res.status(500).json({ error: "ERRORE GOOGLE REALE: " + data.error.message });
+    }
+
+    if (!data.candidates || !data.candidates[0]) {
+      return res.status(500).json({ error: "Google non ha restituito risultati.", debug: data });
     }
 
     const textResponse = data.candidates[0].content.parts[0].text;
     res.status(200).json(JSON.parse(textResponse));
 
   } catch (e) {
-    console.error("Errore Backend:", e);
-    res.status(500).json({ error: "Il server non ha potuto elaborare la richiesta." });
+    res.status(500).json({ error: "Errore interno: " + e.message });
   }
 }
