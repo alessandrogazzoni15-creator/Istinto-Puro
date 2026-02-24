@@ -11,9 +11,10 @@
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 600px; }
         .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; border: 1px solid var(--border); outline: none; }
         .verify-btn { width: 100%; background: var(--green); border: none; border-radius: 12px; padding: 18px; font-family: 'Bebas Neue'; font-size: 22px; cursor: pointer; color: var(--dark); }
-        #loadingWrap { display: none; margin: 20px; color: var(--green); }
+        #loading { display: none; margin: 20px; color: var(--green); font-weight: bold; }
         #resultsCard { display: none; margin-top: 20px; }
         .player-item { border-left: 2px solid var(--green); padding-left: 15px; margin: 15px 0; text-align: left; }
+        .player-link { color: var(--green); text-decoration: none; font-weight: bold; }
         h1 span { color: var(--green); }
     </style>
 </head>
@@ -23,39 +24,59 @@
         <input class="team-input" type="text" placeholder="Squadra 1">
         <input class="team-input" type="text" placeholder="Squadra 2">
         <button class="verify-btn" id="verifyBtn" onclick="verify()">VERIFICA VERITÀ</button>
-        <div id="loadingWrap">Ricerca in corso...</div>
+        <div id="loading">Ricerca in corso...</div>
         <div id="resultsCard" class="card">
-            <div id="statusBadge"></div>
-            <div id="resultText"></div>
+            <div id="result"></div>
         </div>
     </div>
 
     <script>
         async function verify() {
-  const inputs = document.querySelectorAll('.team-input');
-  const teams = Array.from(inputs).map(i => i.value.trim()).filter(v => v !== "");
-  if (teams.length < 2) return alert('Inserisci almeno 2 squadre!');
-  
-  document.getElementById('loading').style.display = 'block';
-  document.getElementById('result').innerHTML = '';
+            const inputs = document.querySelectorAll('.team-input');
+            const teams = Array.from(inputs).map(i => i.value.trim()).filter(v => v !== "");
+            if (teams.length < 2) return alert('Inserisci almeno 2 squadre!');
 
-  try {
-    const response = await fetch('/api/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teams })
-    });
-    const data = await response.json();
-    let html = '';
-    data.calciatori.forEach(p => {
-      html += `<div class="player-item"><a class="player-link" href="${p.fonte_url}" target="_blank">${p.nome}</a><p>${p.squadre_confermate}</p></div>`;
-    });
-    document.getElementById('result').innerHTML = html;
-  } catch (e) {
-    document.getElementById('result').innerHTML = "Errore nella ricerca.";
-  }
-  document.getElementById('loading').style.display = 'none';
-}
+            const btn = document.getElementById('verifyBtn');
+            const loading = document.getElementById('loading');
+            const resultsCard = document.getElementById('resultsCard');
+            const resultDiv = document.getElementById('result');
+
+            btn.disabled = true;
+            loading.style.display = 'block';
+            resultsCard.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ teams })
+                });
+                
+                const data = await response.json();
+                let html = '';
+                
+                if (data.calciatori && data.calciatori.length > 0) {
+                    data.calciatori.forEach(p => {
+                        html += `
+                            <div class="player-item">
+                                <a class="player-link" href="${p.fonte_url}" target="_blank">${p.nome} ↗</a>
+                                <p style="font-size:14px; margin-top:5px;">${p.squadre_confermate}</p>
+                            </div>`;
+                    });
+                } else {
+                    html = "<p>Nessun collegamento trovato.</p>";
+                }
+                
+                resultDiv.innerHTML = html;
+                resultsCard.style.display = 'block';
+            } catch (e) {
+                resultDiv.innerHTML = "<p>Errore nella ricerca. Controlla la chiave API su Vercel.</p>";
+                resultsCard.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+                btn.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>
