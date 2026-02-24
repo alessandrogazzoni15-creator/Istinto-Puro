@@ -9,31 +9,21 @@
         :root { --green: #00E676; --dark: #0a0f0a; --card: #111811; --border: #1e2e1e; --text: #e8f5e8; }
         body { background: var(--dark); color: var(--text); font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; text-align: center; }
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 600px; }
-        .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; outline: none; }
-        .team-input:focus { border-color: var(--green); }
-        .verify-btn { width: 100%; background: var(--green); border: none; border-radius: 12px; padding: 18px; font-family: 'Bebas Neue'; font-size: 22px; cursor: pointer; letter-spacing: 2px; color: var(--dark); }
-        .verify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        #loadingWrap { display: none; margin: 20px; color: var(--green); font-weight: bold; }
+        .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; border: 1px solid var(--border); outline: none; }
+        .verify-btn { width: 100%; background: var(--green); border: none; border-radius: 12px; padding: 18px; font-family: 'Bebas Neue'; font-size: 22px; cursor: pointer; color: var(--dark); }
+        #loadingWrap { display: none; margin: 20px; color: var(--green); }
         #resultsCard { display: none; margin-top: 20px; }
-        .player-item { border-left: 2px solid var(--green); padding-left: 15px; margin: 20px 0; text-align: left; }
-        .player-link { color: var(--green); text-decoration: none; font-weight: bold; font-size: 18px; }
-        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; text-transform: uppercase; margin-bottom: 10px; border: 1px solid; }
-        .found { color: var(--green); border-color: var(--green); background: rgba(0, 230, 118, 0.1); }
-        .partial { color: #ff9800; border-color: #ff9800; background: rgba(255, 152, 0, 0.1); }
+        .player-item { border-left: 2px solid var(--green); padding-left: 15px; margin: 15px 0; text-align: left; }
         h1 span { color: var(--green); }
     </style>
 </head>
 <body>
     <h1>ISTINTO <span>PURO</span></h1>
     <div class="card">
-        <div id="teamsContainer">
-            <input class="team-input" type="text" placeholder="Es. Juventus">
-            <input class="team-input" type="text" placeholder="Es. Milan">
-        </div>
+        <input class="team-input" type="text" placeholder="Squadra 1">
+        <input class="team-input" type="text" placeholder="Squadra 2">
         <button class="verify-btn" id="verifyBtn" onclick="verify()">VERIFICA VERITÀ</button>
-        
-        <div id="loadingWrap">Ricerca in corso sui database reali...</div>
-
+        <div id="loadingWrap">Ricerca in corso...</div>
         <div id="resultsCard" class="card">
             <div id="statusBadge"></div>
             <div id="resultText"></div>
@@ -44,14 +34,11 @@
         async function verify() {
             const inputs = document.querySelectorAll('.team-input');
             const teams = Array.from(inputs).map(i => i.value.trim()).filter(v => v !== "");
-            
             if (teams.length < 2) return alert("Inserisci almeno 2 squadre!");
 
             const btn = document.getElementById('verifyBtn');
             const loading = document.getElementById('loadingWrap');
             const resultsCard = document.getElementById('resultsCard');
-            const resultText = document.getElementById('resultText');
-            const statusBadge = document.getElementById('statusBadge');
 
             btn.disabled = true;
             loading.style.display = 'block';
@@ -63,28 +50,17 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ teams })
                 });
-
                 const data = await response.json();
                 
-                statusBadge.innerHTML = `<div class="status-badge ${data.collegamento_trovato ? 'found' : 'partial'}">${data.collegamento_trovato ? 'Trovato' : 'Parziale'}</div>`;
-                
+                document.getElementById('statusBadge').innerHTML = data.collegamento_trovato ? "TROVATO" : "PARZIALE";
                 let html = '';
-                if (data.calciatori && data.calciatori.length > 0) {
-                    data.calciatori.forEach(p => {
-                        html += `
-                            <div class="player-item">
-                                <a class="player-link" href="${p.fonte_url}" target="_blank">${p.nome} ↗</a>
-                                <div style="font-size: 14px; opacity: 0.8; margin-top: 5px;">${p.squadre_confermate}</div>
-                            </div>`;
-                    });
-                } else {
-                    html = "<p>Nessun risultato trovato.</p>";
-                }
-                
-                resultText.innerHTML = html;
+                data.calciatori.forEach(p => {
+                    html += `<div class="player-item"><strong>${p.nome}</strong><br><small>${p.squadre_confermate}</small></div>`;
+                });
+                document.getElementById('resultText').innerHTML = html;
                 resultsCard.style.display = 'block';
             } catch (e) {
-                alert("Errore durante la ricerca.");
+                alert("Errore nel server.");
             } finally {
                 loading.style.display = 'none';
                 btn.disabled = false;
