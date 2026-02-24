@@ -32,40 +32,30 @@
 
     <script>
         async function verify() {
-            const inputs = document.querySelectorAll('.team-input');
-            const teams = Array.from(inputs).map(i => i.value.trim()).filter(v => v !== "");
-            if (teams.length < 2) return alert("Inserisci almeno 2 squadre!");
+  const inputs = document.querySelectorAll('.team-input');
+  const teams = Array.from(inputs).map(i => i.value.trim()).filter(v => v !== "");
+  if (teams.length < 2) return alert('Inserisci almeno 2 squadre!');
+  
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('result').innerHTML = '';
 
-            const btn = document.getElementById('verifyBtn');
-            const loading = document.getElementById('loadingWrap');
-            const resultsCard = document.getElementById('resultsCard');
-
-            btn.disabled = true;
-            loading.style.display = 'block';
-            resultsCard.style.display = 'none';
-
-            try {
-                const response = await fetch('/api/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ teams })
-                });
-                const data = await response.json();
-                
-                document.getElementById('statusBadge').innerHTML = data.collegamento_trovato ? "TROVATO" : "PARZIALE";
-                let html = '';
-                data.calciatori.forEach(p => {
-                    html += `<div class="player-item"><strong>${p.nome}</strong><br><small>${p.squadre_confermate}</small></div>`;
-                });
-                document.getElementById('resultText').innerHTML = html;
-                resultsCard.style.display = 'block';
-            } catch (e) {
-                alert("Errore nel server.");
-            } finally {
-                loading.style.display = 'none';
-                btn.disabled = false;
-            }
-        }
+  try {
+    const response = await fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teams })
+    });
+    const data = await response.json();
+    let html = '';
+    data.calciatori.forEach(p => {
+      html += `<div class="player-item"><a class="player-link" href="${p.fonte_url}" target="_blank">${p.nome}</a><p>${p.squadre_confermate}</p></div>`;
+    });
+    document.getElementById('result').innerHTML = html;
+  } catch (e) {
+    document.getElementById('result').innerHTML = "Errore nella ricerca.";
+  }
+  document.getElementById('loading').style.display = 'none';
+}
     </script>
 </body>
 </html>
