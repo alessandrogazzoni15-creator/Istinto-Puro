@@ -1,18 +1,34 @@
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  
   const { teams } = req.body;
   const key = process.env.GEMINI_API_KEY;
-  const prompt = `Trova calciatori che hanno giocato in queste squadre: ${teams.join(', ')}. Rispondi SOLO con un JSON: {"collegamento_trovato": true, "calciatori": [{"nome": "...", "squadre_confermate": "...", "fonte_url": "..."}]}`;
+
+  if (!key) return res.status(500).json({ error: 'Chiave API mancante su Vercel' });
+
+  const prompt = `Trova calciatori che hanno giocato in queste squadre: ${teams.join(', ')}. Rispondi ESCLUSIVAMENTE con un JSON con questa struttura: {"collegamento_trovato": true, "calciatori": [{"nome": "...", "squadre_confermate": "...", "fonte_url": "..."}]}. Non aggiungere testo prima o dopo il JSON.`;
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
     });
+
     const data = await response.json();
-    res.status(200).json(JSON.parse(data.candidates[0].content.parts[0].text));
+    
+    if (data.error) {
+      return res.status(500).json({ error: "Errore Google: " + data.error.message });
+    }
+
+    const textResponse = data.candidates[0].content.parts[0].text;
+    res.status(200).json(JSON.parse(textResponse));
+
   } catch (e) {
-    res.status(500).json({ error: "Errore API" });
+    console.error("Errore Backend:", e);
+    res.status(500).json({ error: "Il server non ha potuto elaborare la richiesta." });
   }
 }
