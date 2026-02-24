@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
     const prompt = `Trova calciatori famosi che hanno giocato in tutte queste squadre: ${teams.join(', ')}. Rispondi solo con un JSON: {"collegamento_trovato": true, "calciatori": [{"nome": "...", "squadre_confermate": "...", "fonte_url": "..."}]}`;
 
-    // LA VERITÀ: Abbiamo cambiato "v1beta" in "v1" per stabilità
+    // MODIFICA CRUCIALE: Passiamo da v1beta a v1
     const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,13 +25,13 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (data.error) {
-      // Questo ci dirà se la chiave è invalida o se il modello ha altri problemi
       return res.status(500).json({ error: "Errore Google: " + data.error.message });
     }
 
     if (data.candidates && data.candidates[0]) {
-      const textResponse = data.candidates[0].content.parts[0].text;
-      // Pulizia della risposta da eventuali blocchi di codice markdown
+      let textResponse = data.candidates[0].content.parts[0].text;
+      
+      // Pulizia markdown se l'IA risponde con ```json
       const cleanJson = textResponse.replace(/```json|```/g, "").trim();
       return res.status(200).json(JSON.parse(cleanJson));
     }
