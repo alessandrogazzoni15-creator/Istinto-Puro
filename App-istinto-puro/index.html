@@ -3,31 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Istinto Puro – Verificatore</title>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <title>Istinto Puro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root { --green: #00E676; --dark: #0a0f0a; --card: #111811; --border: #1e2e1e; --text: #e8f5e8; }
         body { background: var(--dark); color: var(--text); font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; text-align: center; }
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 600px; }
-        .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; border: 1px solid var(--border); outline: none; }
+        .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; outline: none; }
         .verify-btn { width: 100%; background: var(--green); border: none; border-radius: 12px; padding: 18px; font-family: 'Bebas Neue'; font-size: 22px; cursor: pointer; color: var(--dark); }
-        #loading { display: none; margin: 20px; color: var(--green); font-weight: bold; }
-        #resultsCard { display: none; margin-top: 20px; }
-        .player-item { border-left: 2px solid var(--green); padding-left: 15px; margin: 15px 0; text-align: left; }
-        .player-link { color: var(--green); text-decoration: none; font-weight: bold; }
-        h1 span { color: var(--green); }
+        #loading { display: none; margin: 20px; color: var(--green); }
+        #result { margin-top: 20px; text-align: left; }
+        .player-item { border-left: 2px solid var(--green); padding-left: 15px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-    <h1>ISTINTO <span>PURO</span></h1>
+    <h1>ISTINTO <span style="color:var(--green)">PURO</span></h1>
     <div class="card">
         <input class="team-input" type="text" placeholder="Squadra 1">
         <input class="team-input" type="text" placeholder="Squadra 2">
         <button class="verify-btn" id="verifyBtn" onclick="verify()">VERIFICA VERITÀ</button>
         <div id="loading">Ricerca in corso...</div>
-        <div id="resultsCard" class="card">
-            <div id="result"></div>
-        </div>
+        <div id="result"></div>
     </div>
 
     <script>
@@ -38,12 +34,11 @@
 
             const btn = document.getElementById('verifyBtn');
             const loading = document.getElementById('loading');
-            const resultsCard = document.getElementById('resultsCard');
             const resultDiv = document.getElementById('result');
 
             btn.disabled = true;
             loading.style.display = 'block';
-            resultsCard.style.display = 'none';
+            resultDiv.innerHTML = '';
 
             try {
                 const response = await fetch('/api/verify', {
@@ -51,27 +46,17 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ teams })
                 });
-                
                 const data = await response.json();
+                
                 let html = '';
-                
-                if (data.calciatori && data.calciatori.length > 0) {
+                if (data.calciatori) {
                     data.calciatori.forEach(p => {
-                        html += `
-                            <div class="player-item">
-                                <a class="player-link" href="${p.fonte_url}" target="_blank">${p.nome} ↗</a>
-                                <p style="font-size:14px; margin-top:5px;">${p.squadre_confermate}</p>
-                            </div>`;
+                        html += `<div class="player-item"><strong>${p.nome}</strong><br><small>${p.squadre_confermate}</small></div>`;
                     });
-                } else {
-                    html = "<p>Nessun collegamento trovato.</p>";
                 }
-                
-                resultDiv.innerHTML = html;
-                resultsCard.style.display = 'block';
+                resultDiv.innerHTML = html || "Nessun risultato.";
             } catch (e) {
-                resultDiv.innerHTML = "<p>Errore nella ricerca. Controlla la chiave API su Vercel.</p>";
-                resultsCard.style.display = 'block';
+                resultDiv.innerHTML = "Errore di connessione al server.";
             } finally {
                 loading.style.display = 'none';
                 btn.disabled = false;
