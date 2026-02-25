@@ -5,34 +5,36 @@ module.exports = async (req, res) => {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
     const teamsList = teams.join(', ');
-    const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}. Includi SOLO calciatori di cui sei assolutamente certo. Meglio 0 che uno sbagliato. Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
+
+    const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}.
+Restituisci MASSIMO 5 candidati di cui sei più sicuro.
+Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
+
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
+
     const geminiData = await geminiRes.json();
     if (!geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
       return res.status(200).json({ calciatori: [] });
     }
+
     const cleaned = geminiData.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
     const candidati = JSON.parse(cleaned).calciatori || [];
-    const verificati = [];
+    console.log("Candidati Gemini:", JSON.stringify(candidati));
 
-    for (const candidato of candidati) {
+    const risultati = await Promise.all(candidati.map(async (candidato) => {
       try {
         const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
 
-        // Cerca il testo completo della pagina su IT e EN
         const [resIT, resEN] = await Promise.all([
-          fetch(`https://it.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json`),
-          fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json`)
+          fetch(`https://it.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`),
+          fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`)
         ]);
 
-        const [dataIT, dataEN] = await Promise.all([
-          resIT.json(),
-          resEN.json()
-        ]);
+        const [dataIT, dataEN] = await Promise.all([resIT.json(), resEN.json()]);
 
         const estraiTesto = (data) => {
           const pages = data?.query?.pages;
@@ -41,31 +43,38 @@ module.exports = async (req, res) => {
           return page?.extract ? page.extract.toLowerCase() : '';
         };
 
-        const testo = estraiTesto(dataIT) + ' ' + estraiTesto(dataEN);
-        if (!testo.trim()) continue;
+        const testoIT = estraiTesto(dataIT);
+        const testoEN = estraiTesto(dataEN);
+        const testo = testoIT + ' ' + testoEN;
 
-        // Cerca le squadre con varianti comuni
-        const squadreConfermate = teams.filter(team => {
-          const t = team.toLowerCase();
-          return testo.includes(t);
+        console.log(`[${candidato.nome}] testo trovato: ${testo.length} chars`);
+        teams.forEach(team => {
+          console.log(`[${candidato.nome}] squadra "${team}" trovata: ${testo.includes(team.toLowerCase())}`);
         });
+
+        if (!testo.trim()) return null;
+
+        const squadreConfermate = teams.filter(team => testo.includes(team.toLowerCase()));
+        if (squadreConfermate.length !== teams.length) return null;
 
         const urlIT = `https://it.wikipedia.org/wiki/${nomeEncoded}`;
         const urlEN = `https://en.wikipedia.org/wiki/${nomeEncoded}`;
 
-        if (squadreConfermate.length === teams.length) {
-          verificati.push({
-            nome: candidato.nome,
-            squadre_confermate: squadreConfermate.join(', '),
-            fonte_url: estraiTesto(dataIT) ? urlIT : urlEN
-          });
-        }
-      } catch (e) {
-        continue;
-      }
-    }
+        return {
+          nome: candidato.nome,
+          squadre_confermate: squadreConfermate.join(', '),
+          fonte_url: testoIT ? urlIT : urlEN
+        };
 
+      } catch (e) {
+        console.log(`[${candidato.nome}] errore:`, e.message);
+        return null;
+      }
+    }));
+
+    const verificati = risultati.filter(r => r !== null);
     return res.status(200).json({ calciatori: verificati });
+
   } catch (err) {
     return res.status(500).json({ error: "Errore: " + err.message });
   }
