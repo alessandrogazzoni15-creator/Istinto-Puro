@@ -1,4 +1,4 @@
-// Usiamo require invece di import per massima compatibilità
+// Usiamo require per massima compatibilità con la configurazione attuale del server
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 module.exports = async (req, res) => {
