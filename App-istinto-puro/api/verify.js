@@ -6,7 +6,7 @@ module.exports = async (req, res) => {
         if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
         const teamsList = teams.join(', ');
         const prompt = `Trova calciatori famosi che hanno giocato in TUTTE queste squadre: ${teamsList}. Rispondi SOLO con JSON valido, nessun testo aggiuntivo: {"calciatori": [{"nome": "Nome Cognome", "squadre_confermate": "Squadra1, Squadra2", "fonte_url": "https://it.wikipedia.org/wiki/Nome_Cognome"}]}`;
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key=${key}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
