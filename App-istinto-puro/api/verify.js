@@ -1,93 +1,100 @@
-function normalizza(str) {
-  return str.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .trim();
+async function getTeamId(teamName) {
+  const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(teamName)}&language=it&format=json&type=item`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (!data.search || data.search.length === 0) return null;
+
+  return data.search[0].id;
+}
+
+function buildSparqlQuery(teamIds) {
+  const teamFilters = teamIds
+    .map(id => `?player wdt:P54 wd:${id} .`)
+    .join('\n');
+
+  return `
+    SELECT ?player ?playerLabel WHERE {
+      ?player wdt:P31 wd:Q5 .
+      ?player wdt:P106 wd:Q937857 .
+
+      ${teamFilters}
+
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". }
+    }
+    LIMIT 5
+  `;
+}
+
+async function getWikipediaLink(qid) {
+  const url = `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`;
+  const res = await fetch(url);
+  const data = await res.json();
+
+  const entity = data.entities[qid];
+
+  if (entity.sitelinks.itwiki) {
+    return `https://it.wikipedia.org/wiki/${entity.sitelinks.itwiki.title.replace(/ /g, '_')}`;
+  }
+
+  if (entity.sitelinks.enwiki) {
+    return `https://en.wikipedia.org/wiki/${entity.sitelinks.enwiki.title.replace(/ /g, '_')}`;
+  }
+
+  return `https://www.wikidata.org/wiki/${qid}`;
 }
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  if (req.method !== 'POST') {
+    return res.status(405).send('Method Not Allowed');
+  }
+
   try {
     const { teams } = req.body;
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
-    const teamsList = teams.join(', ');
 
-    const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}.
-Restituisci MASSIMO 5 candidati di cui sei più sicuro.
-Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
-
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-
-    const geminiData = await geminiRes.json();
-    if (!geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
-      return res.status(200).json({ calciatori: [] });
+    if (!teams || !Array.isArray(teams) || teams.length === 0) {
+      return res.status(400).json({ error: "Teams mancanti." });
     }
 
-    const cleaned = geminiData.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
-    const candidati = JSON.parse(cleaned).calciatori || [];
-    console.log("Candidati Gemini:", JSON.stringify(candidati));
+    const teamIds = [];
 
-    const risultati = await Promise.all(candidati.map(async (candidato) => {
-      try {
-        const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
-
-        const [resIT, resEN] = await Promise.all([
-          fetch(`https://it.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`),
-          fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`)
-        ]);
-
-        const [dataIT, dataEN] = await Promise.all([resIT.json(), resEN.json()]);
-
-        const estraiTesto = (data) => {
-          const pages = data?.query?.pages;
-          if (!pages) return '';
-          const page = Object.values(pages)[0];
-          return page?.extract ? normalizza(page.extract) : '';
-        };
-
-        const testoIT = estraiTesto(dataIT);
-        const testoEN = estraiTesto(dataEN);
-        const testo = testoIT + ' ' + testoEN;
-
-        if (!testo.trim()) {
-          console.log(`[${candidato.nome}] nessun testo Wikipedia trovato`);
-          return null;
-        }
-
-        const squadreConfermate = teams.filter(team => {
-          const teamNorm = normalizza(team);
-          const trovata = testo.includes(teamNorm);
-          console.log(`[${candidato.nome}] squadra "${team}" → "${teamNorm}" trovata: ${trovata}`);
-          return trovata;
-        });
-
-        if (squadreConfermate.length !== teams.length) return null;
-
-        const urlIT = `https://it.wikipedia.org/wiki/${nomeEncoded}`;
-        const urlEN = `https://en.wikipedia.org/wiki/${nomeEncoded}`;
-
-        return {
-          nome: candidato.nome,
-          squadre_confermate: squadreConfermate.join(', '),
-          fonte_url: testoIT ? urlIT : urlEN
-        };
-
-      } catch (e) {
-        console.log(`[${candidato.nome}] errore:`, e.message);
-        return null;
+    for (const team of teams) {
+      const id = await getTeamId(team);
+      if (!id) {
+        return res.status(400).json({ error: `Squadra non trovata: ${team}` });
       }
-    }));
+      teamIds.push(id);
+    }
 
-    const verificati = risultati.filter(r => r !== null);
-    return res.status(200).json({ calciatori: verificati });
+    const sparqlQuery = buildSparqlQuery(teamIds);
+
+    const sparqlRes = await fetch("https://query.wikidata.org/sparql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/sparql-query",
+        "Accept": "application/sparql-results+json"
+      },
+      body: sparqlQuery
+    });
+
+    const sparqlData = await sparqlRes.json();
+
+    const risultati = [];
+
+    for (const item of sparqlData.results.bindings) {
+      const qid = item.player.value.split('/').pop();
+      const wikiLink = await getWikipediaLink(qid);
+
+      risultati.push({
+        nome: item.playerLabel.value,
+        wikidata_url: wikiLink
+      });
+    }
+
+    return res.status(200).json({ calciatori: risultati });
 
   } catch (err) {
-    return res.status(500).json({ error: "Errore: " + err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
