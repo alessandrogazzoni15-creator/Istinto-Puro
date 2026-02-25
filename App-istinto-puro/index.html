@@ -3,46 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Istinto Puro – Verificatore Ufficiale</title>
+    <title>Istinto Puro – Verificatore</title>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --green: #00E676; --dark: #0a0f0a; --card: #111811; --border: #1e2e1e; --text: #e8f5e8; --error: #ff5252; }
-        body { background: var(--dark); color: var(--text); font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; text-align: center; }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 600px; }
-        .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; outline: none; box-sizing: border-box; }
+        :root { --green: #00E676; --dark: #0a0f0a; --card: #111811; --border: #1e2e1e; --text: #e8f5e8; }
+        body { background: var(--dark); color: var(--text); font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; text-align: center; margin: 0; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 600px; box-sizing: border-box; }
+        .team-input { width: 100%; background: var(--dark); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); margin-bottom: 10px; outline: none; box-sizing: border-box; font-size: 16px; }
         .verify-btn { width: 100%; background: var(--green); border: none; border-radius: 12px; padding: 18px; font-family: 'Bebas Neue'; font-size: 24px; cursor: pointer; color: var(--dark); transition: 0.3s; margin-top: 10px; }
-        .verify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        #result { margin-top: 25px; text-align: left; }
+        .verify-btn:disabled { opacity: 0.5; cursor: wait; }
+        #result { margin-top: 25px; text-align: left; width: 100%; }
         .player-item { border-left: 3px solid var(--green); padding: 15px; margin-bottom: 15px; background: rgba(0, 230, 118, 0.05); border-radius: 0 8px 8px 0; display: flex; justify-content: space-between; align-items: center; }
         .validate-btn { background: transparent; border: 1px solid var(--green); color: var(--green); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; }
-        .validate-btn:disabled { opacity: 0.5; border-color: #666; color: #666; }
-        .error-box { background: rgba(255, 82, 82, 0.1); border: 1px solid var(--error); color: var(--error); padding: 15px; border-radius: 10px; font-size: 14px; margin-top: 20px; }
+        .error-message { color: #ff5252; background: rgba(255, 82, 82, 0.1); padding: 12px; border-radius: 8px; font-size: 14px; margin-top: 15px; border: 1px solid #ff5252; }
         h1 span { color: var(--green); }
     </style>
 </head>
 <body>
     <h1>ISTINTO <span>PURO</span></h1>
     <div class="card">
-        <div id="teams-container">
-            <input class="team-input" type="text" placeholder="Squadra 1 (es. milan)" id="teamA">
-            <input class="team-input" type="text" placeholder="Squadra 2 (es. inter)" id="teamB">
-        </div>
-
-        <button class="verify-btn" id="verifyBtn" onclick="verify()">TROVA COLLEGAMENTI</button>
-        
+        <input class="team-input" type="text" placeholder="Squadra 1 (es. milan)" id="tA">
+        <input class="team-input" type="text" placeholder="Squadra 2 (es. inter)" id="tB">
+        <button class="verify-btn" id="mainBtn" onclick="verify()">TROVA COLLEGAMENTI</button>
         <div id="result"></div>
     </div>
 
     <script>
         async function verify() {
-            const teamA = document.getElementById('teamA').value.trim();
-            const teamB = document.getElementById('teamB').value.trim();
+            const teamA = document.getElementById('tA').value.trim();
+            const teamB = document.getElementById('tB').value.trim();
             const resultDiv = document.getElementById('result');
-            const btn = document.getElementById('verifyBtn');
+            const btn = document.getElementById('mainBtn');
 
-            if (!teamA || !teamB) return alert("Inserisci entrambe le squadre!");
+            if (!teamA || !teamB) {
+                alert("Inserisci entrambe le squadre!");
+                return;
+            }
 
-            // Reset interfaccia
             btn.disabled = true;
             btn.innerText = "RICERCA IN CORSO...";
             resultDiv.innerHTML = "";
@@ -56,18 +53,55 @@
 
                 const data = await response.json();
 
-                if (!response.ok) {
-                    // Gestione specifica degli errori del database squadre o delle chiavi API
-                    throw new Error(data.error || "Errore durante la ricerca.");
-                }
+                if (!response.ok) throw new Error(data.error || "Errore sconosciuto");
 
-                if (data.candidati && Array.isArray(data.candidati)) {
-                    let html = '<h3 style="font-family:Bebas Neue; color:var(--green)">Candidati suggeriti dall\'AI:</h3>';
+                if (data.candidati && data.candidati.length > 0) {
+                    let html = '<h3 style="font-family:Bebas Neue; color:var(--green)">Candidati suggeriti:</h3>';
                     data.candidati.forEach(p => {
                         html += `
                             <div class="player-item">
-                                <div>
-                                    <div style="font-weight:bold; font-size:18px;">${p.nome}</div>
-                                    <div style="font-size:11px; opacity:0.6; text-transform:uppercase;">Dati ufficiali via Sofascore</div>
-                                </div>
-                                <button class="validate-btn" onclick="validaUfficialmente(this, '${p.nome}', ${data.teamIds.a}, ${data.teamIds.b})">
+                                <strong>${p.nome}</strong>
+                                <button class="validate-btn" onclick="validaUfficiale(this, '${p.nome}', ${data.teamIds.a}, ${data.teamIds.b})">
+                                    VERIFICA ✅
+                                </button>
+                            </div>`;
+                    });
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = "<p>Nessun calciatore trovato.</p>";
+                }
+            } catch (e) {
+                resultDiv.innerHTML = `<div class="error-message">⚠️ ${e.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "TROVA COLLEGAMENTI";
+            }
+        }
+
+        async function validaUfficiale(btn, playerName, idA, idB) {
+            btn.disabled = true;
+            btn.innerText = "⏳...";
+            try {
+                const response = await fetch('/api/validate-career', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playerName, teamIdA: idA, teamIdB: idB })
+                });
+                const data = await response.json();
+                if (data.verified) {
+                    btn.innerText = "UFFICIALE ✅";
+                    btn.style.backgroundColor = "var(--green)";
+                    btn.style.color = "var(--dark)";
+                } else {
+                    btn.innerText = "NON RISULTA ❌";
+                    btn.style.color = "#ff5252";
+                    btn.style.borderColor = "#ff5252";
+                }
+            } catch (err) {
+                btn.innerText = "ERRORE";
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
