@@ -22,11 +22,11 @@ module.exports = async (req, res) => {
     for (const candidato of candidati) {
       try {
         const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
-        
-        // Cerca su Wikipedia italiano E inglese
+
+        // Cerca il testo completo della pagina su IT e EN
         const [resIT, resEN] = await Promise.all([
-          fetch(`https://it.wikipedia.org/api/rest_v1/page/summary/${nomeEncoded}`),
-          fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${nomeEncoded}`)
+          fetch(`https://it.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json`),
+          fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json`)
         ]);
 
         const [dataIT, dataEN] = await Promise.all([
@@ -34,25 +34,30 @@ module.exports = async (req, res) => {
           resEN.json()
         ]);
 
-        // Combina i testi di entrambe le Wikipedia
-        const testoIT = dataIT.extract ? dataIT.extract.toLowerCase() : '';
-        const testoEN = dataEN.extract ? dataEN.extract.toLowerCase() : '';
-        const testo = testoIT + ' ' + testoEN;
+        const estraiTesto = (data) => {
+          const pages = data?.query?.pages;
+          if (!pages) return '';
+          const page = Object.values(pages)[0];
+          return page?.extract ? page.extract.toLowerCase() : '';
+        };
 
+        const testo = estraiTesto(dataIT) + ' ' + estraiTesto(dataEN);
         if (!testo.trim()) continue;
 
-        // Usa la URL italiana se disponibile, altrimenti inglese
-        const url = dataIT.content_urls?.desktop?.page || dataEN.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${nomeEncoded}`;
+        // Cerca le squadre con varianti comuni
+        const squadreConfermate = teams.filter(team => {
+          const t = team.toLowerCase();
+          return testo.includes(t);
+        });
 
-        const squadreConfermate = teams.filter(team =>
-          testo.includes(team.toLowerCase())
-        );
+        const urlIT = `https://it.wikipedia.org/wiki/${nomeEncoded}`;
+        const urlEN = `https://en.wikipedia.org/wiki/${nomeEncoded}`;
 
         if (squadreConfermate.length === teams.length) {
           verificati.push({
             nome: candidato.nome,
             squadre_confermate: squadreConfermate.join(', '),
-            fonte_url: url
+            fonte_url: estraiTesto(dataIT) ? urlIT : urlEN
           });
         }
       } catch (e) {
