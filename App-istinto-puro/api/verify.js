@@ -8,24 +8,18 @@ module.exports = async (req, res) => {
 
     const prompt = `Sei un database enciclopedico del calcio mondiale. 
 Trova calciatori professionisti che hanno giocato in TUTTE queste squadre: ${teamsList}.
-
 REGOLE ASSOLUTE:
 - Includi un calciatore SOLO se hai la certezza assoluta che ha giocato in OGNUNA delle squadre elencate
-- Verifica mentalmente ogni calciatore: anno per anno, squadra per squadra
-- Se hai anche solo un 1% di dubbio su una squadra, NON includere il calciatore
-- Includi sia calciatori famosi che meno noti
+- Verifica mentalmente ogni calciatore anno per anno
+- Se hai anche solo un 1% di dubbio, NON includere il calciatore
 - Meglio restituire 0 risultati che uno sbagliato
-
 Rispondi SOLO con JSON valido, nessun testo aggiuntivo:
 {"calciatori": [{"nome": "Nome Cognome", "squadre_confermate": "Squadra1 (anno-anno), Squadra2 (anno-anno)", "fonte_url": "https://it.wikipedia.org/wiki/Nome_Cognome"}]}`;
 
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1 }
-      })
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
 
     const geminiData = await geminiRes.json();
