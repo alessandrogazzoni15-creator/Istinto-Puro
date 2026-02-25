@@ -7,9 +7,10 @@ module.exports = async (req, res) => {
 
     if (!key) return res.status(500).json({ error: "Chiave mancante." });
 
-    const prompt = `Trova calciatori che hanno giocato nel ${teams[0]} e nel ${teams[1]}. Rispondi SOLO JSON: {"calciatori": [{"nome": "Nome", "squadre_confermate": "Squadre", "fonte_url": "https://www.google.com/search?q=Nome+calciatore"}]}`;
+    const prompt = `Trova calciatori famosi che hanno giocato sia nel ${teams[0]} che nel ${teams[1]}. 
+    Rispondi SOLO con questo formato JSON: {"calciatori": [{"nome": "Nome", "squadre_confermate": "Squadre", "fonte_url": "https://www.google.com/search?q=trasferimenti+Nome"}]}. 
+    Se non trovi nulla, rispondi: {"calciatori": []}`;
 
-    // Usiamo il fetch nativo di Node.js (senza require esterni)
     const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -22,8 +23,19 @@ module.exports = async (req, res) => {
     const data = await response.json();
 
     if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-      const text = data.candidates[0].content.parts[0].text;
-      return res.status(200).json(JSON.parse(text));
+      let text = data.candidates[0].content.parts[0].text;
+      
+      // PULIZIA DINAMICA: Prende solo quello che c'è tra le parentesi graffe
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}') + 1;
+      const cleanJson = text.substring(start, end);
+      
+      try {
+        const parsedData = JSON.parse(cleanJson);
+        return res.status(200).json(parsedData);
+      } catch (parseErr) {
+        console.error("Errore nel testo ricevuto:", text);
+      }
     }
 
     return res.status(200).json({ calciatori: [] });
