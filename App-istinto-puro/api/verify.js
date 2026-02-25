@@ -46,4 +46,22 @@ Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
                     testo.includes(team.toLowerCase())
                 );
 
-                if (squadreConfermate.length
+                if (squadreConfermate.length === teams.length) {
+                    verificati.push({
+                        nome: candidato.nome,
+                        squadre_confermate: squadreConfermate.join(', '),
+                        fonte_url: url
+                    });
+                }
+            } catch (e) {
+                // Calciatore non trovato su Wikipedia, lo saltiamo
+                continue;
+            }
+        }
+
+        return res.status(200).json({ calciatori: verificati });
+
+    } catch (err) {
+        return res.status(500).json({ error: "Errore: " + err.message });
+    }
+};
