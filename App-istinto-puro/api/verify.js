@@ -7,21 +7,12 @@ module.exports = async (req, res) => {
     const teamsList = teams.join(', ');
 
     // STEP 1: Gemini suggerisce candidati (max 5)
-    const prompt = `Analizza l'intera carriera professionistica dei calciatori (incluse giovanili, prestiti e trasferimenti definitivi).
-Trova calciatori che, in QUALSIASI MOMENTO della loro carriera, abbiano vestito sia la maglia del "${teams[0]}" che quella del "${teams[1]}", indipendentemente dal tempo trascorso tra le due esperienze o da quante altre squadre abbiano cambiato nel frattempo.
-
-Esempio logico: Se un giocatore ha fatto Squadra A -> Squadra C -> Squadra D -> Squadra B, deve essere incluso.
-
-Rispondi ESCLUSIVAMENTE con questo formato JSON:
-{
-  "calciatori": [
-    {
-      "nome": "Nome Cognome",
-      "percorso": "Descrizione sintetica (es: Al ${teams[0]} nel 2018, alla ${teams[1]} nel 2022 dopo varie esperienze)"
-    }
-  ]
-}`;
-
+    const prompt = `DATABASE_SEARCH: "${teamsList}". 
+REGOLE: 
+1. Trova calciatori con presenze in ENTRAMBE le squadre (anche non consecutive). 
+2. Includi casi come Charles Pickel (Cremonese/Famalicão).
+3. Rispondi SOLO JSON. No testo. No markdown.
+FORMATO: {"calciatori": [{"nome": "Nome Cognome"}]}`;
     const geminiData = await geminiRes.json();
     if (!geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
       return res.status(200).json({ calciatori: [] });
