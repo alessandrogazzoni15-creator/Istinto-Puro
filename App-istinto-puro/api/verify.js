@@ -6,6 +6,7 @@ module.exports = async (req, res) => {
     if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
     const teamsList = teams.join(', ');
 
+    // STEP 1: Gemini suggerisce candidati (max 5)
     const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}.
 Restituisci MASSIMO 5 candidati di cui sei più sicuro.
 Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
@@ -23,8 +24,8 @@ Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
 
     const cleaned = geminiData.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
     const candidati = JSON.parse(cleaned).calciatori || [];
-    console.log("Candidati Gemini:", JSON.stringify(candidati));
 
+    // STEP 2: Verifica tutti i candidati su Wikipedia IN PARALLELO
     const risultati = await Promise.all(candidati.map(async (candidato) => {
       try {
         const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
@@ -47,14 +48,11 @@ Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
         const testoEN = estraiTesto(dataEN);
         const testo = testoIT + ' ' + testoEN;
 
-        console.log(`[${candidato.nome}] testo trovato: ${testo.length} chars`);
-        teams.forEach(team => {
-          console.log(`[${candidato.nome}] squadra "${team}" trovata: ${testo.includes(team.toLowerCase())}`);
-        });
-
         if (!testo.trim()) return null;
 
+        // Verifica che tutte le squadre siano nel testo Wikipedia
         const squadreConfermate = teams.filter(team => testo.includes(team.toLowerCase()));
+
         if (squadreConfermate.length !== teams.length) return null;
 
         const urlIT = `https://it.wikipedia.org/wiki/${nomeEncoded}`;
@@ -67,7 +65,6 @@ Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
         };
 
       } catch (e) {
-        console.log(`[${candidato.nome}] errore:`, e.message);
         return null;
       }
     }));
