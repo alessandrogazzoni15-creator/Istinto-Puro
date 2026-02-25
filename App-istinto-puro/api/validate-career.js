@@ -1,7 +1,6 @@
 const axios = require('axios');
 
 export default async function handler(req, res) {
-    // Header per gestire le chiamate dal frontend
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -13,46 +12,30 @@ export default async function handler(req, res) {
         const apiKey = process.env.RAPIDAPI_KEY; 
         const host = 'sportapi7.p.rapidapi.com';
 
-        // 1. CERCA IL GIOCATORE (Costo: 1 credito)
+        // Ricerca ID Giocatore
         const searchRes = await axios.get(`https://${host}/api/v1/search/players`, {
             params: { q: playerName },
             headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': host }
         });
 
-        const players = searchRes.data.results;
-        if (!players || players.length === 0) {
-            return res.status(200).json({ verified: false, message: "Giocatore non trovato nel database." });
+        if (!searchRes.data.results || searchRes.data.results.length === 0) {
+            return res.status(200).json({ verified: false, message: "Calciatore non trovato." });
         }
 
-        // Prendiamo l'ID del primo risultato (il più probabile)
-        const playerId = players[0].player.id;
+        const playerId = searchRes.data.results[0].player.id;
 
-        // 2. RECUPERA LA CARRIERA STORICA (Costo: 1 credito)
+        // Verifica Carriera
         const careerRes = await axios.get(`https://${host}/api/v1/player/${playerId}/career-history`, {
             headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': host }
         });
 
         const history = careerRes.data.history;
-        if (!history) {
-            return res.status(200).json({ verified: false, message: "Nessuno storico carriera trovato." });
-        }
+        const teamIds = history.map(h => h.team.id);
 
-        // 3. CONFRONTO LOGICO DEGLI ID
-        // Creiamo un set di tutti gli ID squadra in cui ha giocato
-        const teamIdsInHistory = history.map(entry => entry.team.id);
+        const verified = teamIds.includes(parseInt(teamIdA)) && teamIds.includes(parseInt(teamIdB));
 
-        const hasPlayedInA = teamIdsInHistory.includes(parseInt(teamIdA));
-        const hasPlayedInB = teamIdsInHistory.includes(parseInt(teamIdB));
-
-        // Risposta finale
-        return res.status(200).json({
-            verified: hasPlayedInA && hasPlayedInB,
-            playerName: playerName,
-            debug: { foundInA: hasPlayedInA, foundInB: hasPlayedInB }
-        });
-
+        return res.status(200).json({ verified });
     } catch (error) {
-        console.error("Errore SportAPI:", error.message);
-        return res.status(500).json({ error: "Errore nel connettore Sofascore." });
+        return res.status(500).json({ error: error.message });
     }
 }
