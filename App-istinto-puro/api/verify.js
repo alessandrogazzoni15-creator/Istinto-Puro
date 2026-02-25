@@ -1,93 +1,54 @@
-function normalizza(str) {
-  return str.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .trim();
-}
+const teamsDatabase = require('./teams.json'); 
 
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+export default async function handler(req, res) {
+  // Configurazione CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
   try {
-    const { teams } = req.body;
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
-    const teamsList = teams.join(', ');
+    const { teamA, teamB } = req.body;
 
-    const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}.
-Restituisci MASSIMO 5 candidati di cui sei più sicuro.
-Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
+    // Normalizzazione input
+    const normalizedA = teamA.toLowerCase().trim();
+    const normalizedB = teamB.toLowerCase().trim();
 
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
+    const idA = teamsDatabase[normalizedA];
+    const idB = teamsDatabase[normalizedB];
 
-    const geminiData = await geminiRes.json();
-    if (!geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
-      return res.status(200).json({ calciatori: [] });
+    if (!idA || !idB) {
+      return res.status(404).json({ 
+        error: `Squadra non mappata: ${!idA ? teamA : teamB}` 
+      });
     }
 
-    const cleaned = geminiData.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
-    const candidati = JSON.parse(cleaned).calciatori || [];
-    console.log("Candidati Gemini:", JSON.stringify(candidati));
+    const apiKey = process.env.GEMINI_API_KEY;
+    const prompt = `Trova 3 calciatori famosi che hanno giocato sia nel ${teamA} che nel ${teamB}. 
+    Rispondi SOLO con un JSON: {"candidati": [{"nome": "Nome Cognome"}]}`;
 
-    const risultati = await Promise.all(candidati.map(async (candidato) => {
-      try {
-        const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    });
 
-        const [resIT, resEN] = await Promise.all([
-          fetch(`https://it.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`),
-          fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`)
-        ]);
+    const data = await response.json();
+    const textResponse = data.candidates[0].content.parts[0].text;
+    const cleanJson = textResponse.replace(/```json|```/g, "").trim();
+    const result = JSON.parse(cleanJson);
 
-        const [dataIT, dataEN] = await Promise.all([resIT.json(), resEN.json()]);
+    // Risposta corretta per il frontend aggiornato
+    return res.status(200).json({
+      success: true,
+      teamIds: { a: idA, b: idB },
+      candidati: result.candidati
+    });
 
-        const estraiTesto = (data) => {
-          const pages = data?.query?.pages;
-          if (!pages) return '';
-          const page = Object.values(pages)[0];
-          return page?.extract ? normalizza(page.extract) : '';
-        };
-
-        const testoIT = estraiTesto(dataIT);
-        const testoEN = estraiTesto(dataEN);
-        const testo = testoIT + ' ' + testoEN;
-
-        if (!testo.trim()) {
-          console.log(`[${candidato.nome}] nessun testo Wikipedia trovato`);
-          return null;
-        }
-
-        const squadreConfermate = teams.filter(team => {
-          const teamNorm = normalizza(team);
-          const trovata = testo.includes(teamNorm);
-          console.log(`[${candidato.nome}] squadra "${team}" → "${teamNorm}" trovata: ${trovata}`);
-          return trovata;
-        });
-
-        if (squadreConfermate.length !== teams.length) return null;
-
-        const urlIT = `https://it.wikipedia.org/wiki/${nomeEncoded}`;
-        const urlEN = `https://en.wikipedia.org/wiki/${nomeEncoded}`;
-
-        return {
-          nome: candidato.nome,
-          squadre_confermate: squadreConfermate.join(', '),
-          fonte_url: testoIT ? urlIT : urlEN
-        };
-
-      } catch (e) {
-        console.log(`[${candidato.nome}] errore:`, e.message);
-        return null;
-      }
-    }));
-
-    const verificati = risultati.filter(r => r !== null);
-    return res.status(200).json({ calciatori: verificati });
-
-  } catch (err) {
-    return res.status(500).json({ error: "Errore: " + err.message });
+  } catch (error) {
+    return res.status(500).json({ error: "Errore: " + error.message });
   }
-};
+}
