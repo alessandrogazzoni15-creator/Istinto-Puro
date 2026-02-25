@@ -10,24 +10,15 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
   try {
     const { teams } = req.body;
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const sportKey = process.env.SPORTAPI_KEY;
-    if (!geminiKey) return res.status(500).json({ error: "Chiave Gemini mancante." });
-    if (!sportKey) return res.status(500).json({ error: "Chiave SportAPI mancante." });
-
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
     const teamsList = teams.join(', ');
 
-    // STEP 1: Gemini suggerisce 3 candidati con ID SportAPI
     const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}.
-Restituisci MASSIMO 3 candidati di cui sei assolutamente certo.
-Per ogni calciatore fornisci:
-- nome completo
-- slug (nome in minuscolo con trattini, es. "cristiano-ronaldo")
-- id numerico SportAPI/SofaScore se lo conosci, altrimenti null
+Restituisci MASSIMO 5 candidati di cui sei più sicuro.
+Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
 
-Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome", "slug": "nome-cognome", "id": 12345}]}`;
-
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -40,56 +31,55 @@ Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome", "slug": 
 
     const cleaned = geminiData.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
     const candidati = JSON.parse(cleaned).calciatori || [];
+    console.log("Candidati Gemini:", JSON.stringify(candidati));
 
-    // STEP 2: Verifica ogni candidato su SportAPI
     const risultati = await Promise.all(candidati.map(async (candidato) => {
       try {
-        let playerId = candidato.id;
+        const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
 
-        // Solo se Gemini non conosce l'ID, lo cerchiamo (fallback)
-        if (!playerId) {
-          const detailsRes = await fetch(`https://sportapi7.p.rapidapi.com/api/v1/player/${candidato.slug}`, {
-            headers: {
-              'x-rapidapi-host': 'sportapi7.p.rapidapi.com',
-              'x-rapidapi-key': sportKey
-            }
-          });
-          const detailsData = await detailsRes.json();
-          playerId = detailsData?.player?.id;
-          if (!playerId) return null;
+        const [resIT, resEN] = await Promise.all([
+          fetch(`https://it.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`),
+          fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${nomeEncoded}&prop=extracts&explaintext=true&format=json&exintro=false`)
+        ]);
+
+        const [dataIT, dataEN] = await Promise.all([resIT.json(), resEN.json()]);
+
+        const estraiTesto = (data) => {
+          const pages = data?.query?.pages;
+          if (!pages) return '';
+          const page = Object.values(pages)[0];
+          return page?.extract ? normalizza(page.extract) : '';
+        };
+
+        const testoIT = estraiTesto(dataIT);
+        const testoEN = estraiTesto(dataEN);
+        const testo = testoIT + ' ' + testoEN;
+
+        if (!testo.trim()) {
+          console.log(`[${candidato.nome}] nessun testo Wikipedia trovato`);
+          return null;
         }
 
-        // Ottieni storico trasferimenti
-        const transferRes = await fetch(`https://sportapi7.p.rapidapi.com/api/v1/player/${playerId}/transfer-history`, {
-          headers: {
-            'x-rapidapi-host': 'sportapi7.p.rapidapi.com',
-            'x-rapidapi-key': sportKey
-          }
+        const squadreConfermate = teams.filter(team => {
+          const teamNorm = normalizza(team);
+          const trovata = testo.includes(teamNorm);
+          console.log(`[${candidato.nome}] squadra "${team}" → "${teamNorm}" trovata: ${trovata}`);
+          return trovata;
         });
-        const transferData = await transferRes.json();
-        const transfers = transferData?.transferHistory || [];
-
-        // Raccogli tutte le squadre in cui ha giocato
-        const squadreGiocate = new Set();
-        transfers.forEach(t => {
-          if (t.fromTeamName) squadreGiocate.add(normalizza(t.fromTeamName));
-          if (t.toTeamName) squadreGiocate.add(normalizza(t.toTeamName));
-        });
-
-        // Verifica che tutte le squadre richieste siano presenti
-        const squadreConfermate = teams.filter(team =>
-          squadreGiocate.has(normalizza(team))
-        );
 
         if (squadreConfermate.length !== teams.length) return null;
+
+        const urlIT = `https://it.wikipedia.org/wiki/${nomeEncoded}`;
+        const urlEN = `https://en.wikipedia.org/wiki/${nomeEncoded}`;
 
         return {
           nome: candidato.nome,
           squadre_confermate: squadreConfermate.join(', '),
-          fonte_url: `https://www.sofascore.com/player/${candidato.slug}/${playerId}`
+          fonte_url: testoIT ? urlIT : urlEN
         };
 
       } catch (e) {
+        console.log(`[${candidato.nome}] errore:`, e.message);
         return null;
       }
     }));
