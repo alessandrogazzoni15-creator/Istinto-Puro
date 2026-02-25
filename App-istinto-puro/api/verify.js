@@ -1,28 +1,26 @@
-// Usa require per includere il JSON direttamente nel pacchetto di deploy
-const teamsDatabase = require('./teams.json'); 
+// Importiamo il file .js che Vercel non può "perdere"
+const teamsDatabase = require('./teams.js'); 
 
 export default async function handler(req, res) {
-  // Header CORS obbligatori
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); 
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     const { teamA, teamB } = req.body;
     
-    // Normalizzazione input per matchare le chiavi del JSON
+    // Pulizia e normalizzazione
     const nameA = teamA.toLowerCase().trim();
     const nameB = teamB.toLowerCase().trim();
 
     const idA = teamsDatabase[nameA];
     const idB = teamsDatabase[nameB];
 
-    // Se la squadra non è nel JSON, invia un errore chiaro
     if (!idA || !idB) {
       return res.status(404).json({ 
-        error: `Squadra non trovata: ${!idA ? teamA : teamB}. Verifica che sia nel database.` 
+        error: `Squadra non mappata: ${!idA ? teamA : teamB}. Usa nomi come milan, inter, juventus.` 
       });
     }
 
@@ -31,13 +29,12 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `Rispondi solo con un JSON. Trova 3 calciatori famosi che hanno giocato sia nel ${teamA} che nel ${teamB}. Formato: {"candidati": [{"nome": "Nome Cognome"}]}` }] }]
+        contents: [{ parts: [{ text: `Rispondi SOLO in JSON. Trova 3 calciatori famosi in comune tra ${teamA} e ${teamB}. Formato: {"candidati": [{"nome": "Nome Cognome"}]}` }] }]
       })
     });
 
     const data = await response.json();
-    
-    if (!data.candidates) throw new Error("L'AI non ha risposto. Controlla la chiave API.");
+    if (!data.candidates) throw new Error("Errore Gemini: Controlla la chiave API.");
 
     const text = data.candidates[0].content.parts[0].text;
     const cleanJson = text.replace(/```json|```/g, "").trim();
