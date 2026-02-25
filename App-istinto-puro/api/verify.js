@@ -1,3 +1,11 @@
+function normalizza(str) {
+  return str.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim();
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
   try {
@@ -6,13 +14,16 @@ module.exports = async (req, res) => {
     if (!key) return res.status(500).json({ error: "Chiave mancante su Vercel." });
     const teamsList = teams.join(', ');
 
-    // STEP 1: Gemini suggerisce candidati (max 5)
-    const prompt = `DATABASE_SEARCH: "${teamsList}". 
-REGOLE: 
-1. Trova calciatori con presenze in ENTRAMBE le squadre (anche non consecutive). 
-2. Includi casi come Charles Pickel (Cremonese/Famalicão).
-3. Rispondi SOLO JSON. No testo. No markdown.
-FORMATO: {"calciatori": [{"nome": "Nome Cognome"}]}`;
+    const prompt = `Sei un esperto di calcio mondiale. Trova calciatori che hanno giocato in TUTTE queste squadre: ${teamsList}.
+Restituisci MASSIMO 5 candidati di cui sei più sicuro.
+Rispondi SOLO con JSON valido: {"calciatori": [{"nome": "Nome Cognome"}]}`;
+
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+
     const geminiData = await geminiRes.json();
     if (!geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
       return res.status(200).json({ calciatori: [] });
@@ -20,8 +31,8 @@ FORMATO: {"calciatori": [{"nome": "Nome Cognome"}]}`;
 
     const cleaned = geminiData.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
     const candidati = JSON.parse(cleaned).calciatori || [];
+    console.log("Candidati Gemini:", JSON.stringify(candidati));
 
-    // STEP 2: Verifica tutti i candidati su Wikipedia IN PARALLELO
     const risultati = await Promise.all(candidati.map(async (candidato) => {
       try {
         const nomeEncoded = encodeURIComponent(candidato.nome.replace(/ /g, '_'));
@@ -37,17 +48,24 @@ FORMATO: {"calciatori": [{"nome": "Nome Cognome"}]}`;
           const pages = data?.query?.pages;
           if (!pages) return '';
           const page = Object.values(pages)[0];
-          return page?.extract ? page.extract.toLowerCase() : '';
+          return page?.extract ? normalizza(page.extract) : '';
         };
 
         const testoIT = estraiTesto(dataIT);
         const testoEN = estraiTesto(dataEN);
         const testo = testoIT + ' ' + testoEN;
 
-        if (!testo.trim()) return null;
+        if (!testo.trim()) {
+          console.log(`[${candidato.nome}] nessun testo Wikipedia trovato`);
+          return null;
+        }
 
-        // Verifica che tutte le squadre siano nel testo Wikipedia
-        const squadreConfermate = teams.filter(team => testo.includes(team.toLowerCase()));
+        const squadreConfermate = teams.filter(team => {
+          const teamNorm = normalizza(team);
+          const trovata = testo.includes(teamNorm);
+          console.log(`[${candidato.nome}] squadra "${team}" → "${teamNorm}" trovata: ${trovata}`);
+          return trovata;
+        });
 
         if (squadreConfermate.length !== teams.length) return null;
 
@@ -61,6 +79,7 @@ FORMATO: {"calciatori": [{"nome": "Nome Cognome"}]}`;
         };
 
       } catch (e) {
+        console.log(`[${candidato.nome}] errore:`, e.message);
         return null;
       }
     }));
